@@ -1,6 +1,7 @@
 node_modules/
 .env
 cache/
+.cache/
 *.log
 logs/
 .partial/

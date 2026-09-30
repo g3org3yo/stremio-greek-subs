@@ -6,9 +6,9 @@
   "description": "Τοπικό Stremio addon: βρίσκει ελληνικούς υπότιτλους, αλλιώς μεταφράζει τους αγγλικούς",
   "engines": { "node": ">=22" },
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node bin/start.js",
     "test": "node --test",
-    "check-engines": "node scripts/check-engines.js",
+    "check": "node scripts/check-engines.js",
     "prewarm": "node scripts/prewarm.js"
   },
   "dependencies": {
