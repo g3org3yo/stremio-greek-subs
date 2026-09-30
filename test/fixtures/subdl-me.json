@@ -1,0 +1,9 @@
+{
+  "plan": { "is_pro": false, "name": "Free" },
+  "usage": {
+    "search": { "used": 12, "limit": 2000, "remaining": 1988, "period": "day" },
+    "downloads": { "used": 3, "limit": 50, "remaining": 47, "period": "day" },
+    "ai": { "translations": { "eligible": false, "free_trial_per_month": 1, "period": "month" } }
+  },
+  "upgrade_url": "https://subdl.com/pro"
+}

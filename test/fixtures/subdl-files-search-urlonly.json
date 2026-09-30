@@ -1,0 +1,8 @@
+{
+  "status": true,
+  "results": [{ "sd_id": 1234, "type": "movie", "name": "Dune: Part Two", "year": 2024, "imdb_id": "tt15239678" }],
+  "match": { "engine": "local", "confidence": "high", "type": "movie", "title": "Dune: Part Two", "year": 2024 },
+  "subtitles": [
+    { "release_name": "Dune.Part.Two.2024.2160p.WEB-DL-GROUP", "lang": "english", "match_score": 0.93, "url": "/subtitle/3197651-3213944.zip" }
+  ]
+}

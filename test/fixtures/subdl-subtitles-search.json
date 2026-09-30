@@ -1,0 +1,7 @@
+{
+  "status": true,
+  "results": [{ "sd_id": 1234, "type": "tv", "name": "Breaking Bad", "year": 2008, "imdb_id": "tt0903747" }],
+  "subtitles": [
+    { "n_id": "e1", "release_name": "Breaking.Bad.S05E14.1080p.BluRay.x264-DEMAND", "lang": "english", "url": "/subtitle/e1-1.zip" }
+  ]
+}

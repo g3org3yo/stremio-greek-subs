@@ -1114,8 +1114,24 @@ git commit -m "feat(translate): engines Gemini/LM Studio με σειρά fallbac
 - Produces:
   - `createSubdlProvider({ apiKey, fetchImpl, minMatchScore }) -> Provider`
   - `Provider = { name, isConfigured(), search({ imdbId, type, season, episode, filename, languages[] }) -> Candidate[], download(candidate) -> Promise<{ buffer, filename }>, quota() -> Promise<{downloads, searches}> }`
-  - `Candidate = { provider, id, language, releaseName, score, downloads }`
+  - `Candidate = { provider, id, directUrl, language, releaseName, score, downloads }`
   - `createProviders(config, fetchImpl) -> Provider[]` (σειρά από `PROVIDER_ORDER`, αγνοεί όσους δεν έχουν κλειδί)
+
+**Επαληθευμένο συμβόλαιο SubDL v2** (από https://subdl.com/developers — μη το μαντέψεις ξανά):
+
+| Τι | Τιμή |
+|---|---|
+| Base URL | `https://api.subdl.com` |
+| Πιστοποίηση | `Authorization: Bearer <key>` (ή `X-API-Key`) |
+| Αναζήτηση με filename | `GET /api/v2/files/search?filename=&languages=&subs_per_page=` — επιστρέφει `{status, results[], match{}, subtitles[]}` με `release_name`, `lang`, `match_score` (0–1), `url` |
+| Αναζήτηση με id | `GET /api/v2/subtitles/search?imdb_id=&languages=&type=&season=&episode=&unpack=1` |
+| Λήψη | `GET /api/v2/subtitles/{nId}/download?format=zip\|file` |
+| Υπόλοιπο | `GET /api/v2/me` → `{plan, usage:{search,downloads,ai}}` |
+| Σφάλμα | `{error:{code,message,docs_url}}`· ο κωδικός `quota_exceeded` έρχεται ΚΑΙ με HTTP 200 |
+| Όρια δωρεάν | 2.000 αναζητήσεις/ημέρα, 50 λήψεις/ημέρα |
+| Γλώσσες | ISO 639-1 (`el`, `en`) — το `ell` του Stremio μεταφράζεται με `toSubdlLang` |
+
+Δύο παγίδες που επιβεβαιώθηκαν στην πράξη: (α) το `quota_exceeded` μπορεί να έρθει με status 200, άρα ο έλεγχος σφάλματος δεν μπορεί να βασιστεί μόνο στο `res.ok`· (β) κάποιες απαντήσεις δίνουν σκέτο σχετικό `url` (`/subtitle/<nid>-<fileid>.zip`) χωρίς nId, οπότε η λήψη γίνεται από `https://dl.subdl.com` + url.
 
 - [ ] **Step 1: Γράψε τα fixtures**
 

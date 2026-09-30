@@ -1,0 +1,24 @@
+{
+  "status": true,
+  "results": [
+    { "sd_id": 1234, "type": "movie", "name": "Dune: Part Two", "year": 2024, "imdb_id": "tt15239678" }
+  ],
+  "match": {
+    "engine": "local",
+    "confidence": "high",
+    "degraded": false,
+    "type": "movie",
+    "title": "Dune: Part Two",
+    "year": 2024,
+    "season": null,
+    "episode": null,
+    "full_season": false,
+    "sd_id": 1234
+  },
+  "alternates": [],
+  "subtitles": [
+    { "n_id": "aaa", "release_name": "Dune.Part.Two.2024.2160p.WEB-DL-GROUP", "lang": "english", "match_score": 0.94, "url": "/subtitle/aaa-111.zip" },
+    { "n_id": "bbb", "release_name": "Dune.Part.Two.2024.1080p.BluRay-OTHER", "lang": "english", "match_score": 0.41, "url": "/subtitle/bbb-222.zip" },
+    { "n_id": "ccc", "release_name": "Dune.Part.Two.2024.2160p.WEB-DL-GROUP", "lang": "greek", "match_score": 0.91, "url": "/subtitle/ccc-333.zip" }
+  ]
+}
