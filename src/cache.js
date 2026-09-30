@@ -23,6 +23,14 @@ export function safeKey(prefix, raw) {
   return `${prefix}-${createHash('sha1').update(value).digest('hex').slice(0, 12)}`;
 }
 
+// Έλεγχος για οτιδήποτε έρχεται από URL και καταλήγει σε όνομα αρχείου. Το `..`
+// περνά το SAFE (οι τελείες επιτρέπονται), γι' αυτό απορρίπτεται ρητά: αλλιώς
+// ένα σκέτο `..` θα έδειχνε φάκελο αντί για αρχείο.
+export function isSafeKey(key) {
+  const value = String(key ?? '');
+  return SAFE.test(value) && !/^\.+$/.test(value);
+}
+
 function readJsonSafe(path) {
   try {
     return JSON.parse(readFileSync(path, 'utf8'));

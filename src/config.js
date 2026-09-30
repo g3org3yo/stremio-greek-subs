@@ -41,6 +41,10 @@ export function loadConfig({ root = process.cwd(), env = process.env, envFile } 
     port,
     // Το Stremio δέχεται addon από localhost — γι' αυτό η προεπιλογή είναι 127.0.0.1.
     baseUrl: v.ADDON_BASE_URL ?? `http://127.0.0.1:${port}`,
+    // Όταν ο χρήστης δηλώσει ρητά διεύθυνση (π.χ. HTTPS μέσω tunnel), αυτή υπερισχύει
+    // πάντα· αλλιώς ο server χτίζει τα URLs από το Host του αιτήματος, ώστε το addon
+    // να δουλεύει σωστά ακόμη κι αν αλλάξει η θύρα.
+    baseUrlExplicit: Boolean(v.ADDON_BASE_URL),
     subdlApiKey: v.SUBDL_API_KEY ?? '',
     geminiApiKey: v.GEMINI_API_KEY ?? '',
     geminiModel: v.GEMINI_MODEL ?? 'gemini-2.5-flash',

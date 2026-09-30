@@ -58,4 +58,11 @@ test('loadConfig: λίστες χωρισμένες με κόμμα και άκ�
 test('loadConfig: δέχεται ρητό ADDON_BASE_URL (για μελλοντικό HTTPS μέσω tunnel)', () => {
   const cfg = loadConfig({ env: { ADDON_BASE_URL: 'https://subs.example.com' } });
   assert.equal(cfg.baseUrl, 'https://subs.example.com');
+  assert.equal(cfg.baseUrlExplicit, true, 'ρητή διεύθυνση -> ο server δεν την αντικαθιστά με το Host');
+});
+
+test('loadConfig: χωρίς ADDON_BASE_URL, η διεύθυνση προκύπτει από τη θύρα', () => {
+  const cfg = loadConfig({ env: { ADDON_PORT: '7100' } });
+  assert.equal(cfg.baseUrl, 'http://127.0.0.1:7100');
+  assert.equal(cfg.baseUrlExplicit, false);
 });
