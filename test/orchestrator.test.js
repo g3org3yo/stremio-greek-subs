@@ -98,7 +98,7 @@ test('προτιμά πραγματικούς ελληνικούς: καμία �
   const out = await h.orchestrator.list(MOVIE);
   assert.equal(out.length, 1);
   assert.match(out[0].id, /^el-/);
-  assert.equal(out[0].lang, 'ell');
+  assert.equal(out[0].lang, 'el');
   assert.doesNotMatch(out[0].label, /μετάφραση/i, 'δεν διαφημίζει μετάφραση όταν ο υπότιτλος είναι πραγματικός');
   assert.equal(h.eng.calls.length, 0, 'δεν μεταφράζει όταν υπάρχει ελληνικός');
   assert.equal(h.jobs.list().length, 0, 'δεν μπαίνει τίποτα στην ουρά');

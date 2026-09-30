@@ -101,7 +101,7 @@ test('subtitles: πρώτη φορά δίνει δείκτη προόδου με
     assert.equal(subtitles.length, 1);
     assert.match(subtitles[0].id, /^prog-/);
     assert.equal(subtitles[0].url, `${base}/s/${subtitles[0].id}`);
-    assert.equal(subtitles[0].lang, 'ell');
+    assert.equal(subtitles[0].lang, 'el');
   });
 });
 

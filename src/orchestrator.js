@@ -84,7 +84,9 @@ export function createOrchestrator({
     return {
       id: key,
       url: `${baseUrl}/s/${key}`,
-      lang: 'ell',
+      // Το Stremio θέλει ISO 639-1 («el») στο lang: με τριψήφιο κωδικό ο player δεν
+      // αναγνωρίζει τη γλώσσα και δεν την επιλέγει αυτόματα.
+      lang: targetLang,
       label: ai
         ? 'Ελληνικοί (αυτόματη μετάφραση)'
         : `Ελληνικοί${meta?.releaseName ? ` — ${meta.releaseName}` : ''}`,
@@ -96,7 +98,7 @@ export function createOrchestrator({
     return {
       id,
       url: `${baseUrl}/s/${id}`,
-      lang: 'ell',
+      lang: targetLang,
       label: 'Ελληνικοί — μετάφραση σε εξέλιξη (ξανάνοιξε το μενού σε λίγο)',
     };
   }
