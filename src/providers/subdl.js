@@ -5,19 +5,24 @@ const DL_BASE = 'https://dl.subdl.com';
 const SUBTITLE_EXT = /\.(srt|ass|ssa|vtt|sub)$/i;
 const RAR_MAGIC = 'Rar!';
 
-// Το SubDL δουλεύει με ISO 639-1 ("el"), ενώ το Stremio μας δίνει/περιμένει ISO
-// 639-2 ("ell"). Η μετατροπή γίνεται στα σύνορα, εδώ — πουθενά αλλού.
+// Το SubDL δουλεύει με ISO 639-1 ("el", "en") αλλά δίνει και ονόματα γλώσσας
+// ("Greek"). Το Stremio ζητάει/δίνει κι αυτό ISO 639-1. Η μετατροπή γίνεται στα
+// σύνορα, εδώ — πουθενά αλλού.
 export function toSubdlLang(code) {
   const map = { ell: 'el', gre: 'el', eng: 'en' };
   return map[String(code ?? '').toLowerCase()] ?? String(code ?? '').toLowerCase();
 }
 
-// Τα αποτελέσματα δίνουν τη γλώσσα με το όνομά της ("english"), όχι με κωδικό.
-function pickLang(lang) {
-  const value = String(lang ?? '').toLowerCase();
-  if (value.startsWith('greek') || value === 'el') return 'el';
-  if (value.startsWith('english') || value === 'en') return 'en';
-  return value.slice(0, 2) || 'xx';
+// Τα αποτελέσματα δίνουν τη γλώσσα και με το όνομά της ("English") και με σύντομο
+// κωδικό ("EN"). Ο κωδικός είναι πιο αξιόπιστος· το όνομα είναι εφεδρεία γιατί
+// κάποιες γλώσσες (π.χ. "Brazilian Portuguese") δεν δίνουν σωστό δίγραμμα.
+function pickLang(row) {
+  const short = String(row?.language ?? '').trim().toLowerCase();
+  if (/^[a-z]{2}$/.test(short)) return short;
+  const name = String(row?.lang ?? row?.language ?? '').toLowerCase();
+  if (name.startsWith('greek')) return 'el';
+  if (name.startsWith('english')) return 'en';
+  return name.slice(0, 2) || 'xx';
 }
 
 // Η v2 ροή δίνει nId και κατεβάζουμε από το /api/v2/subtitles/{nId}/download.
@@ -36,25 +41,35 @@ function parseNidFromUrl(url) {
 
 function absoluteDownloadUrl(url) {
   if (typeof url !== 'string' || url === '') return null;
-  if (/^https?:\/\//i.test(url)) return url;
-  return `${DL_BASE}${url.startsWith('/') ? '' : '/'}${url}`;
+  // Οι απαντήσεις δίνουν το url ΠΑΝΩ στο api.subdl.com με το κλειδί μέσα στο query
+  // (?api_key=...). Αν το στείλουμε σε άλλο host, το κλειδί είτε χάνεται είτε
+  // απορρίπτεται — γι' αυτό λύνουμε πάντα ως προς το BASE.
+  try {
+    return new URL(url, BASE).toString();
+  } catch {
+    return null;
+  }
 }
 
 function mapRow(row) {
   if (!row || typeof row !== 'object') return null;
-  const releaseName = row.release_name ?? row.name ?? null;
-  // Το directUrl εξαρτάται από το αν η γραμμή δίνει ΡΗΤΑ ταυτότητα: αν δίνει nId,
-  // κατεβάζουμε από τη σύγχρονη διαδρομή· αν δίνει μόνο url, από το dl.subdl.com.
-  const explicitId = row.n_id ?? row.file_n_id ?? row.id ?? null;
-  const urlId = parseNidFromUrl(row.url);
-  const id = explicitId != null ? String(explicitId) : urlId ? String(urlId) : null;
-  const directUrl = explicitId == null ? absoluteDownloadUrl(row.url) : null;
-  if (!releaseName || (!id && !directUrl)) return null;
+  // Με unpack=1 τα πραγματικά αρχεία μέσα στο zip δίνονται στα unpack_files.
+  const unpack = Array.isArray(row.unpack_files) && row.unpack_files.length > 0 ? row.unpack_files[0] : null;
+  const releaseName = row.release_name ?? unpack?.release_name ?? row.name ?? null;
+  // Ο provider ΔΕΝ δίνει πεδίο n_id: δίνει έτοιμους συνδέσμους. Ο σύνδεσμος του
+  // συγκεκριμένου αρχείου μέσα στο πακέτο είναι ο ακριβής (επαληθευμένο: 200 και το
+  // ίδιο το .srt), γι' αυτό προτιμάται — ο σύνδεσμος του πακέτου είναι η εφεδρεία,
+  // και το id μένει μόνο για όποια γραμμή δεν δίνει καθόλου σύνδεσμο.
+  const directUrl = absoluteDownloadUrl(unpack?.url) ?? absoluteDownloadUrl(row.url);
+  const explicitId = row.n_id ?? row.file_n_id ?? unpack?.file_n_id ?? row.id ?? null;
+  const fromUrl = parseNidFromUrl(row.url);
+  const id = explicitId != null ? String(explicitId) : fromUrl != null ? String(fromUrl) : null;
+  if (!releaseName || (!directUrl && !id)) return null;
   return {
     provider: 'subdl',
     id,
     directUrl,
-    language: pickLang(row.lang ?? row.language),
+    language: pickLang(row),
     releaseName,
     score: typeof row.match_score === 'number' ? row.match_score : null,
     downloads: typeof row.downloads === 'number' ? row.downloads : 0,
@@ -80,13 +95,40 @@ export function createSubdlProvider({ apiKey, fetchImpl = fetch, minMatchScore =
   // HTTP status (429/402) και με σώμα {error:{code:"quota_exceeded"}} που μπορεί
   // να έρθει με status 200. Και τα δύο σημαίνουν «μην ξαναδοκιμάσεις σήμερα».
   function toError(status, body) {
-    const code = body?.error?.code;
-    const message = body?.error?.message ?? (typeof body === 'string' ? body.slice(0, 200) : '');
-    const quota = status === 429 || status === 402 || code === 'quota_exceeded';
-    const detail = code ? `${code}: ${message}` : message;
+    const errorField = body && typeof body === 'object' ? body.error : null;
+    const code = errorField && typeof errorField === 'object' ? errorField.code : null;
+    const message =
+      (typeof errorField === 'string' ? errorField : errorField?.message) ??
+      (typeof body === 'string' ? body.slice(0, 200) : '');
+    const quota =
+      status === 429 || status === 402 || code === 'quota_exceeded' || /quota|limit (reached|exceeded)/i.test(message);
+    // Με άκυρο κλειδί το Cloudflare απαντά σελίδα HTML: ένα σφάλμα 403 γεμάτο HTML
+    // δεν λέει τίποτα σε όποιον το διαβάζει, οπότε το μεταφράζουμε σε οδηγία.
+    const html = /^\s*<(?:!doctype|html)/i.test(typeof body === 'string' ? body : '');
+    const detail = html
+      ? 'ο διακομιστής απάντησε σελίδα HTML — συνήθως σημαίνει άκυρο ή λάθος κλειδί'
+      : code
+        ? `${code}: ${message}`
+        : message;
     const err = new Error(`SubDL${status ? ` (${status})` : ''}${detail ? ` — ${detail}` : ''}`);
     if (quota) err.quotaExhausted = true;
+    if (html || status === 401 || status === 403) err.authFailed = true;
     return err;
+  }
+
+  const NOT_FOUND = /can'?t find|not found|no (?:results|subtitles)|nothing found/i;
+
+  // «Δεν βρήκα ταινία» ΔΕΝ είναι σφάλμα: το SubDL το στέλνει με HTTP 200 και
+  // status:false. Αν το πετάγαμε ως εξαίρεση, κάθε άγνωστη ταινία θα έμοιαζε με
+  // βλάβη της πηγής. Ένα δομημένο σφάλμα (π.χ. quota_exceeded) ή «Invalid request
+  // parameters» παραμένει σφάλμα — αυτά δεν είναι «δεν υπάρχει».
+  function isEmptyResult(body) {
+    if (!body || typeof body !== 'object') return false;
+    if (body.subtitles?.length > 0 || body.results?.length > 0) return false;
+    const code = body.error && typeof body.error === 'object' ? body.error.code : null;
+    if (code) return false;
+    const message = typeof body.error === 'string' ? body.error : (body.error?.message ?? '');
+    return body.status === false && (message === '' || NOT_FOUND.test(message));
   }
 
   async function get(path, params) {
@@ -94,6 +136,7 @@ export function createSubdlProvider({ apiKey, fetchImpl = fetch, minMatchScore =
     const res = await fetchImpl(`${BASE}${path}${query}`, { headers });
     const body = await readBody(res);
     if (!res.ok) throw toError(res.status, body);
+    if (isEmptyResult(body)) return { ...body, subtitles: [] };
     if (body && typeof body === 'object' && body.error) throw toError(null, body);
     return body;
   }
@@ -118,7 +161,7 @@ export function createSubdlProvider({ apiKey, fetchImpl = fetch, minMatchScore =
           languages: langParam,
           subs_per_page: String(subsPerPage),
         });
-        return (data?.subtitles ?? [])
+        const byFile = (data?.subtitles ?? [])
           .map(mapRow)
           .filter(Boolean)
           // Φιλτράρουμε τη γλώσσα και στον client, όχι μόνο στο αίτημα: αν το API
@@ -128,6 +171,11 @@ export function createSubdlProvider({ apiKey, fetchImpl = fetch, minMatchScore =
           // υπότιτλοι από άλλη έκδοση είναι χειρότεροι από καθόλου υπότιτλοι.
           .filter((c) => c.score == null || c.score >= minMatchScore)
           .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+        // Το files/search θέλει σχεδόν ακριβές όνομα release και απαντά
+        // «can't find movie or tv» όταν δεν το αναγνωρίσει (π.χ. αρχείο που
+        // κατέβασε ο χρήστης με δικό του όνομα). Τότε — και μόνο τότε — πέφτουμε
+        // στην αναζήτηση με imdb_id, που είναι πάντα γνωστό στο Stremio.
+        if (byFile.length > 0 || !imdbId) return byFile;
       }
 
       const params = { languages: langParam, unpack: '1' };

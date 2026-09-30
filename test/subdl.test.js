@@ -61,7 +61,9 @@ test('search: κρατά το nId και το url λήψης του αποτελ
   const p = provider(async () => ({ ok: true, status: 200, json: async () => fixture('subdl-files-search.json'), text: async () => '' }));
   const out = await p.search({ filename: 'x.mkv', type: 'movie', languages: ['en'] });
   assert.equal(out[0].id, 'aaa');
-  assert.equal(out[0].directUrl, null, 'η v2 μορφή έχει nId· δεν χρειάζεται dl.subdl.com');
+  // Κρατάμε ΚΑΙ τα δύο: ο σύνδεσμος είναι η αξιόπιστη διαδρομή (το πραγματικό API δεν
+  // δίνει καθόλου n_id) και το id μένει για όποια γραμμή δεν έχει σύνδεσμο.
+  assert.match(out[0].directUrl, /^https:\/\/api\.subdl\.com\/subtitle\//, 'λύνεται ως προς το api.subdl.com, κρατώντας το κλειδί');
 });
 
 test('search: δέχεται τη legacy μορφή με σκέτο url και ξέρει από πού να κατεβάσει', async () => {
@@ -69,7 +71,11 @@ test('search: δέχεται τη legacy μορφή με σκέτο url και �
   const out = await p.search({ filename: 'x.mkv', type: 'movie', languages: ['en'] });
   assert.equal(out.length, 1);
   assert.equal(out[0].id, '3197651', 'το nId βγαίνει από το url');
-  assert.equal(out[0].directUrl, 'https://dl.subdl.com/subtitle/3197651-3213944.zip');
+  assert.equal(
+    out[0].directUrl,
+    'https://api.subdl.com/subtitle/3197651-3213944.zip',
+    'το κλειδί μένει στο query και ο host είναι αυτός που απάντησε',
+  );
 });
 
 test('search: χωρίς filename πέφτει σε subtitles/search με imdb_id', async () => {
