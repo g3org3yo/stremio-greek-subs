@@ -2,4 +2,7 @@ node_modules/
 .env
 cache/
 *.log
+logs/
 .partial/
+.superpowers/
+npm-debug.log*

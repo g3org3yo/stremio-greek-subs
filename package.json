@@ -1,0 +1,17 @@
+{
+  "name": "stremio-greek-subs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Τοπικό Stremio addon: βρίσκει ελληνικούς υπότιτλους, αλλιώς μεταφράζει τους αγγλικούς",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "check-engines": "node scripts/check-engines.js",
+    "prewarm": "node scripts/prewarm.js"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16"
+  }
+}

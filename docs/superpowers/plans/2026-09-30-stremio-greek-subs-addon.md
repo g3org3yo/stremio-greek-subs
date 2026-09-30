@@ -106,7 +106,7 @@ echo "$PATH" | tr ':' '\n' | grep -i "Tools/node" || echo "(θα ισχύσει 
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test test/",
+    "test": "node --test",
     "check-engines": "node scripts/check-engines.js",
     "prewarm": "node scripts/prewarm.js"
   },
