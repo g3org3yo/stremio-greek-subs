@@ -36,6 +36,26 @@ export function buildPrompt({ items, targetLangName, context = {}, glossary }) {
 // αλλάζουν τον τύπο του id. Δεχόμαστε ό,τι μπορούμε να ερμηνεύσουμε με βεβαιότητα
 // και αγνοούμε σιωπηλά ό,τι δεν μπορούμε — το κάθε cue που λείπει καλύπτεται από
 // το πρωτότυπο κείμενο, οπότε δεν υπάρχει κίνδυνος διάβασμα λάθος γραμμής.
+// Μαζεύει όσα αντικείμενα {"id":N,"text":"..."} είναι πλήρη μέσα σε μια κομμένη ή
+// αλλιώς χαλασμένη απάντηση. Το τελευταίο, μισογραμμένο αντικείμενο δεν ταιριάζει
+// στο μοτίβο και αγνοείται — δεν υπάρχει περίπτωση να διαβαστεί λάθος κείμενο.
+const ROW_PATTERN = /\{\s*"id"\s*:\s*(\d+)\s*,\s*"text"\s*:\s*("(?:[^"\\]|\\.)*")\s*\}/g;
+
+function salvage(text, allowed, result) {
+  ROW_PATTERN.lastIndex = 0;
+  for (let m = ROW_PATTERN.exec(text); m; m = ROW_PATTERN.exec(text)) {
+    const id = Number(m[1]);
+    if (!Number.isInteger(id) || !allowed.has(id) || result.has(id)) continue;
+    try {
+      const value = JSON.parse(m[2]);
+      if (typeof value === 'string' && value.trim() !== '') result.set(id, value);
+    } catch {
+      // Ό,τι δεν διαβάζεται με βεβαιότητα το αφήνουμε στο πρωτότυπο.
+    }
+  }
+  return result;
+}
+
 export function parseTranslationReply(text, expectedIds) {
   const allowed = new Set(expectedIds);
   const result = new Map();
@@ -43,16 +63,22 @@ export function parseTranslationReply(text, expectedIds) {
 
   const cleaned = String(text).replace(/```(?:json)?/gi, '').trim();
   const start = cleaned.indexOf('[');
+  if (start === -1) return salvage(cleaned, allowed, result);
   const end = cleaned.lastIndexOf(']');
-  if (start === -1 || end === -1 || end < start) return result;
+  // Χωρίς τελικό «]» (ή με αντεστραμμένα άγκιστρα) η απάντηση είναι κομμένη: δεν
+  // υπάρχει περίπτωση να διαβαστεί ως JSON, αλλά τα πλήρη αντικείμενα σώζονται.
+  if (end === -1 || end < start) return salvage(cleaned.slice(start), allowed, result);
 
   let parsed;
   try {
     parsed = JSON.parse(cleaned.slice(start, end + 1));
   } catch {
-    return result;
+    // Κομμένη απάντηση (το μοντέλο χτύπησε το όριο εξόδου στη μέση του array):
+    // μαζεύουμε όσα αντικείμενα είναι ΠΛΗΡΗ. Χάνεται μόνο η ουρά, όχι ολόκληρο
+    // το batch — και το κάθε cue που λείπει καλύπτεται από το πρωτότυπο κείμενο.
+    return salvage(cleaned, allowed, result);
   }
-  if (!Array.isArray(parsed)) return result;
+  if (!Array.isArray(parsed)) return salvage(cleaned, allowed, result);
 
   for (const row of parsed) {
     const id = Number(row?.id);

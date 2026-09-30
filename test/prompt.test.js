@@ -65,10 +65,22 @@ test('parseTranslationReply: αντέχει πολυγραμμικό κείμε�
   assert.equal(parseTranslationReply(raw, [1]).get(1), '- Πρώτη γραμμή\n- Δεύτερη');
 });
 
-test('parseTranslationReply: σκουπίδια -> κενός map, χωρίς εξαίρεση', () => {
-  assert.equal(parseTranslationReply('συγγνώμη, δεν μπορώ', [1]).size, 0);
+test('parseTranslationReply: κομμένη απάντηση -> σώζει όσα αντικείμενα είναι ΠΛΗΡΗ', () => {
+  // Το μοντέλο χτύπησε το όριο εξόδου στη μέση: λείπει το τελικό «]» και το τελευταίο
+  // αντικείμενο είναι μισό. Μετρημένο ζωντανά σε batch 70 cues — αν το πετάγαμε όλο,
+  // ολόκληρο το επεισόδιο έμενε αμετάφραστο.
+  const raw = '[{"id":1,"text":"Γεια"},{"id":2,"text":"Κόσμε"},{"id":3,"text":"Μισ';
+  const map = parseTranslationReply(raw, [1, 2, 3]);
+  assert.equal(map.size, 2, 'τα δύο πλήρη σώθηκαν');
+  assert.equal(map.get(2), 'Κόσμε');
+  assert.equal(map.has(3), false, 'το κολοβό δεν διαβάζεται λάθος');
 });
 
-test('parseTranslationReply: σπασμένο JSON -> κενός map, χωρίς εξαίρεση', () => {
-  assert.equal(parseTranslationReply('[{"id":1,"text":"Γεια"', [1]).size, 0);
+test('parseTranslationReply: η διάσωση δεν πειράζει το καθαρό JSON', () => {
+  const map = parseTranslationReply('[{"id":1,"text":"Γεια"},{"id":2,"text":"Κόσμε"}]', [1, 2]);
+  assert.equal(map.size, 2);
+});
+
+test('parseTranslationReply: σκουπίδια -> κενός map, χωρίς εξαίρεση', () => {
+  assert.equal(parseTranslationReply('συγγνώμη, δεν μπορώ', [1]).size, 0);
 });

@@ -32,6 +32,67 @@ test('gemini: χωρίς κλειδί δεν είναι διαθέσιμος', a
   assert.equal(await engine.isAvailable(), false);
 });
 
+test('gemini: χωρίς μοντέλο διαλέγει flash από τη λίστα /models', async () => {
+  let asked = [];
+  const engine = createGeminiEngine({
+    apiKey: 'κ',
+    fetchImpl: async (url, init) => {
+      asked.push(url);
+      if (/\/models$/.test(url)) {
+        return jsonResponse({
+          models: [
+            { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+            { name: 'models/gemini-3.8-pro', supportedGenerationMethods: ['generateContent'] },
+            { name: 'models/gemini-3.8-flash', supportedGenerationMethods: ['generateContent'] },
+          ],
+        });
+      }
+      return jsonResponse({ candidates: [{ content: { parts: [{ text: '[{"id":1,"text":"Γεια"}]' }] } }] });
+    },
+  });
+  assert.equal(await engine.isAvailable(), true);
+  assert.match(asked[0], /\/models$/);
+  const raw = await engine.translateBatch({ items: [{ id: 1, text: 'Hi' }], targetLangName: 'Ελληνικά' });
+  assert.match(raw, /Γεια/);
+  assert.match(asked[1], /gemini-3\.8-flash:generateContent/);
+  assert.equal(asked.filter((u) => /\/models$/.test(u)).length, 1, 'η λίστα ζητείται μία φορά');
+});
+
+test('gemini: απόσυρση μοντέλου (404) -> ξαναδιαλέγει και ξαναδοκιμάζει, δεν σταματά', async () => {
+  const asked = [];
+  const engine = createGeminiEngine({
+    apiKey: 'κ',
+    model: 'gemini-παλιό-flash',
+    fetchImpl: async (url, init) => {
+      asked.push(url);
+      if (/\/models$/.test(url)) {
+        return jsonResponse({
+          models: [{ name: 'models/gemini-νεο-flash', supportedGenerationMethods: ['generateContent'] }],
+        });
+      }
+      if (/gemini-παλιό-flash/.test(url)) {
+        return {
+          ok: false,
+          status: 404,
+          text: async () => '{"error":{"message":"This model is no longer available to new users"}}',
+        };
+      }
+      return jsonResponse({ candidates: [{ content: { parts: [{ text: '[{"id":1,"text":"Γεια"}]' }] } }] });
+    },
+  });
+  const raw = await engine.translateBatch({ items: [{ id: 1, text: 'Hi' }], targetLangName: 'Ελληνικά' });
+  assert.match(raw, /Γεια/, 'η μετάφραση προχωρά με το νέο μοντέλο');
+  assert.ok(asked.some((u) => /gemini-νεο-flash:generateContent/.test(u)));
+});
+
+test('gemini: αν δεν μπορεί να διαβάσει τη λίστα, ο έλεγχος λέει «όχι» αντί να πετάξει', async () => {
+  const engine = createGeminiEngine({
+    apiKey: 'κ',
+    fetchImpl: async () => ({ ok: false, status: 403, text: async () => 'denied' }),
+  });
+  assert.equal(await engine.isAvailable(), false);
+});
+
 test('gemini: 429 -> σφάλμα με quotaExhausted', async () => {
   const engine = createGeminiEngine({
     apiKey: 'k',
@@ -186,4 +247,44 @@ test('chain: μερική μετάφραση -> επιστρέφει ό,τι π�
   const map = await chain.translateBatch(items, {});
   assert.equal(map.size, 1);
   assert.ok(logs.some((l) => /1\/2/.test(l)), 'καταγράφει την απώλεια');
+});
+
+test('chain: άδειο/άχρηστο batch -> το σπάει στα δύο και ολοκληρώνει, αντί να χαθεί το επεισόδιο', async () => {
+  // Ζωντανό σφάλμα: batch 70 cues δεν έδωσε τίποτα ερμηνεύσιμο και ΟΛΟ το επεισόδιο
+  // έμεινε χωρίς μετάφραση. Τα μισά περνούν (λιγότερη έξοδος για το μοντέλο).
+  const many = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, text: `line ${i + 1}` }));
+  const calls = [];
+  const engine = {
+    name: 'gemini',
+    isAvailable: async () => true,
+    translateBatch: async ({ items: list }) => {
+      calls.push(list.length);
+      if (list.length > 10) return '[]'; // δεν τα καταφέρνει με μεγάλο batch
+      return JSON.stringify(list.map((it) => ({ id: it.id, text: `γρ${it.id}` })));
+    },
+  };
+  const chain = createChain({ engines: [engine], targetLangName: 'Ελληνικά', glossary, log: () => {} });
+  const map = await chain.translateBatch(many, {});
+  assert.equal(map.size, 20, 'και τα 20 cues μεταφράστηκαν');
+  assert.equal(map.get(20), 'γρ20');
+  assert.deepEqual(calls, [20, 10, 10], 'μία προσπάθεια, μετά δύο μισά');
+});
+
+test('chain: κομμένη ουρά -> ζητάει τα υπόλοιπα άλλη μία φορά, χωρίς ατέρμονο βρόχο', async () => {
+  const many = Array.from({ length: 20 }, (_, i) => ({ id: i + 1, text: `line ${i + 1}` }));
+  const calls = [];
+  const engine = {
+    name: 'gemini',
+    isAvailable: async () => true,
+    // Γυρίζει ΠΑΝΤΑ μόνο το 40% των ζητούμενων, κομμένο στη μέση (χωρίς τελικό «]»).
+    translateBatch: async ({ items: list }) => {
+      calls.push(list.length);
+      const cut = Math.max(1, Math.floor(list.length * 0.4));
+      return `[${list.slice(0, cut).map((it) => `{"id":${it.id},"text":"γρ${it.id}"}`).join(',')}`;
+    },
+  };
+  const chain = createChain({ engines: [engine], targetLangName: 'Ελληνικά', glossary, log: () => {} });
+  const map = await chain.translateBatch(many, {});
+  assert.equal(map.size, 12, '8 σώθηκαν από την κομμένη απάντηση, 4 ήρθαν στο δεύτερο πέρασμα');
+  assert.deepEqual(calls, [20, 12], 'δύο αιτήματα: το αρχικό και τα υπόλοιπα — και σταματάει');
 });
