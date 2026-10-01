@@ -8,3 +8,4 @@ logs/
 .partial/
 .superpowers/
 npm-debug.log*
+dist/
