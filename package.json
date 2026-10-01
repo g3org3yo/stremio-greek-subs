@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Τοπικό Stremio addon: βρίσκει ελληνικούς υπότιτλους, αλλιώς μεταφράζει τους αγγλικούς",
+  "description": "Τοπικό Stremio addon για ελληνικούς υπότιτλους (greek subs): έτοιμοι από SubDL, αλλιώς αυτόματη μετάφραση των αγγλικών",
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node bin/start.js",

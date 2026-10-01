@@ -1,11 +1,14 @@
-# Ελληνικοί Υπότιτλοι — τοπικό addon για το Stremio
+# Ελληνικοί Υπότιτλοι για το Stremio — Greek Subs (αυτόματοι υπότιτλοι)
 
 Βρίσκει υπότιτλους για ό,τι βλέπεις στο Stremio και, όταν δεν υπάρχει **πραγματικός**
 ελληνικός, μεταφράζει τον αγγλικό αυτόματα στα ελληνικά. Τρέχει μόνο στον υπολογιστή
 σου (`127.0.0.1`) — τίποτα δεν εκτίθεται στο δίκτυο.
 
-> **In English:** a local Stremio addon that gives you **Greek subtitles** for whatever
-> you watch — real ones from SubDL when they exist, otherwise it auto-translates the
+Ψάχνεις *greek subs* για Stremio; αυτό είναι: δεν κατεβάζει απλώς ό,τι βρει, αλλά φτιάχνει
+τον ελληνικό υπότιτλο ακόμη κι όταν δεν υπάρχει έτοιμος.
+
+> **In English:** a local Stremio addon that gives you **Greek subs** for whatever you
+> watch — real ones from SubDL when they exist, otherwise it auto-translates the
 > English subtitle (free Gemini tier, or a local model as backup). What it produces are
 > **standard `.srt` files**, saved with the video's own name plus `-Greek`, ready to
 > upload to any subtitle site. Runs on Windows, entirely on your own PC — no server, no

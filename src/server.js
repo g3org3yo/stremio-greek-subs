@@ -6,9 +6,10 @@ import { listOutput, readOutput } from './output.js';
 const MANIFEST = {
   id: 'org.local.greek-subs-auto',
   version: '1.0.0',
-  name: 'Ελληνικοί Υπότιτλοι',
+  name: 'Ελληνικοί Υπότιτλοι (Greek Subs)',
   description:
-    'Βρίσκει ελληνικούς υπότιτλους. Αν δεν υπάρχουν, μεταφράζει αυτόματα τους αγγλικούς μία φορά και τους κρατά στη μνήμη.',
+    'Βρίσκει ελληνικούς υπότιτλους. Αν δεν υπάρχουν, μεταφράζει αυτόματα τους αγγλικούς μία φορά και τους κρατά στη μνήμη. ' +
+    'Greek subs for Stremio: ready-made Greek subtitles when they exist, otherwise an automatic translation of the English one.',
   resources: ['subtitles'],
   types: ['movie', 'series'],
   idPrefixes: ['tt'],
@@ -119,7 +120,7 @@ function page(config, orchestrator, jobs, cache, logFile, origin, outputFiles = 
   const logLines = tailLog(logFile, 25).map((l) => `<div class="log">${l.replace(/[<>&]/g, '')}</div>`).join('');
 
   return `<!doctype html>
-<html lang="el"><meta charset="utf-8"><title>Ελληνικοί Υπότιτλοι</title>
+<html lang="el"><meta charset="utf-8"><title>Ελληνικοί Υπότιτλοι (Greek Subs)</title>
 <style>
   body{font:15px/1.6 system-ui,sans-serif;max-width:1000px;margin:2rem auto;padding:0 1rem;color:#111}
   code{background:#f2f2f2;padding:.1rem .3rem;border-radius:3px}
@@ -129,7 +130,7 @@ function page(config, orchestrator, jobs, cache, logFile, origin, outputFiles = 
   .box{background:#f6f6f6;border-radius:8px;padding:.8rem 1rem;margin:1rem 0}
   a.install{display:inline-block;background:#2b6cb0;color:#fff;padding:.6rem 1rem;border-radius:6px;text-decoration:none}
 </style>
-<h1>Ελληνικοί Υπότιτλοι για Stremio</h1>
+<h1>Ελληνικοί Υπότιτλοι για Stremio <span style="font-size:.7em;font-weight:400">(Greek Subs)</span></h1>
 <div class="box">
   <p><b>Εγκατάσταση:</b> <a class="install" href="stremio://${origin.replace(/^https?:\/\//, '')}/manifest.json">Άνοιγμα στο Stremio</a></p>
   <p>Χειροκίνητα, βάλε αυτό το URL στο Stremio → Πρόσθετα: <code>${origin}/manifest.json</code></p>
