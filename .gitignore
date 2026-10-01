@@ -2,6 +2,7 @@ node_modules/
 .env
 cache/
 .cache/
+output/
 *.log
 logs/
 .partial/

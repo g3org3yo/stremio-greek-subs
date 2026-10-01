@@ -62,6 +62,15 @@ export function createCache(dir) {
       writeFileSync(srtPath(key), srtText, 'utf8');
       writeFileSync(metaPath(key), JSON.stringify({ ...meta, key, savedAt: new Date().toISOString() }, null, 2), 'utf8');
     },
+    // Για στοιχεία που μαθαίνονται μετά την αποθήκευση (π.χ. το όνομα με το οποίο
+    // βγήκε το αρχείο στον φάκελο output): δεν ξαναγράφουμε τον υπότιτλο.
+    updateMeta(key, patch = {}) {
+      const current = readJsonSafe(metaPath(key));
+      if (!current) return null;
+      const next = { ...current, ...patch, key };
+      writeFileSync(metaPath(key), JSON.stringify(next, null, 2), 'utf8');
+      return next;
+    },
     list() {
       return readdirSync(dir)
         .filter((f) => f.endsWith('.srt'))

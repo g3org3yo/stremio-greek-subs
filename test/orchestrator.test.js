@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createCache } from '../src/cache.js';
@@ -34,8 +34,11 @@ function fakeEngine(reply = '[{"id":1,"text":"Γεια"}]') {
   };
 }
 
-function harness({ greek = [], english = [{ id: 'en1', provider: 'subdl', releaseName: 'Release.EN', language: 'en', score: 0.95 }], engine } = {}) {
+function harness({ greek = [], english = [{ id: 'en1', provider: 'subdl', releaseName: 'Release.EN', language: 'en', score: 0.95 }], engine, outputDir } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'grorch-'));
+  // Ο πραγματικός config έχει πάντα outputDir, οπότε οι δοκιμές το έχουν επίσης —
+  // εκτός από όποια δοκιμάζει ρητά τη συμπεριφορά χωρίς φάκελο output (outputDir: null).
+  const outDir = outputDir === undefined ? join(dir, 'output') : outputDir;
   const calls = { search: [], download: [], searchArgs: [] };
   const provider = {
     name: 'subdl',
@@ -56,7 +59,7 @@ function harness({ greek = [], english = [{ id: 'en1', provider: 'subdl', releas
   const jobs = createJobQueue({ log: () => {} });
   const logs = [];
   const orchestrator = createOrchestrator({
-    config,
+    config: { ...config, ...(outDir ? { outputDir: outDir } : {}) },
     providers: [provider],
     engines: [eng],
     cache,
@@ -71,6 +74,7 @@ function harness({ greek = [], english = [{ id: 'en1', provider: 'subdl', releas
     calls,
     logs,
     dir,
+    outDir,
     cleanup: () => rmSync(dir, { recursive: true, force: true }),
   };
 }
@@ -264,4 +268,84 @@ test('βλάβη του provider δεν αφήνει τον χρήστη χωρ�
   assert.deepEqual(await o.list(MOVIE), []);
   assert.ok(logs.some((l) => /δίκτυο κάτω/.test(l)), 'το σφάλμα καταγράφεται για διάγνωση');
   rmSync(dir, { recursive: true, force: true });
+});
+
+// --- Φάκελος output: έτοιμα αρχεία για upload, με όνομα από το βίντεο ---
+
+const YTS_MOVIE = {
+  type: 'movie',
+  imdbId: 'tt15239678',
+  id: 'tt15239678',
+  filename: 'Teenage.Sex.And.Death.At.Camp.Miasma.2026.1080p.WEBRip.x264.AAC-[YTS.GG - YTS.BZ].mp4',
+};
+const YTS_NAME = 'Teenage.Sex.And.Death.At.Camp.Miasma.2026.1080p.WEBRip.x264.AAC-[YTS.GG - YTS.BZ]-Greek.srt';
+
+test('ο μεταφρασμένος υπότιτλος βγαίνει στο output/ με το όνομα του βίντεο', async () => {
+  const h = harness();
+  await h.orchestrator.list(YTS_MOVIE);
+  await wait(80);
+  assert.ok(existsSync(join(h.outDir, YTS_NAME)), `περίμενε το ${YTS_NAME} στο output/`);
+
+  const elKey = `el-${videoKey({ imdbId: 'tt15239678' })}`;
+  const written = readFileSync(join(h.outDir, YTS_NAME), 'utf8');
+  assert.equal(written, await h.orchestrator.getSubtitle(elKey), 'το αρχείο είναι ακριβώς ό,τι σερβίρει το Stremio');
+  assert.match(written, /Γεια/);
+  assert.equal(h.cache.meta(elKey).outputFile, YTS_NAME, 'το κλειδί θυμάται ποιο αρχείο βγήκε');
+  h.cleanup();
+});
+
+test('πραγματικοί ελληνικοί: και αυτοί βγαίνουν στο output/, χωρίς μετάφραση', async () => {
+  const h = harness({
+    greek: [{ id: 'el1', provider: 'subdl', releaseName: 'Greek.Sub', language: 'el', score: 0.92 }],
+  });
+  await h.orchestrator.list(MOVIE);
+  assert.ok(existsSync(join(h.outDir, 'Dune.2024.2160p-Greek.srt')));
+  assert.equal(h.eng.calls.length, 0);
+  h.cleanup();
+});
+
+test('άλλο release, ίδιος υπότιτλος: δεύτερο αρχείο με το νέο όνομα, καμία νέα μετάφραση', async () => {
+  const h = harness();
+  await h.orchestrator.list(MOVIE);
+  await wait(80);
+  const other = { ...MOVIE, filename: 'Dune.Part.Two.2024.1080p.WEBRip.x264-YTS.mp4' };
+  await h.orchestrator.list(other);
+
+  assert.ok(existsSync(join(h.outDir, 'Dune.2024.2160p-Greek.srt')), 'το πρώτο αρχείο μένει');
+  assert.ok(existsSync(join(h.outDir, 'Dune.Part.Two.2024.1080p.WEBRip.x264-YTS-Greek.srt')), 'και το νέο όνομα');
+  assert.equal(h.eng.calls.length, 1, 'η μετάφραση έγινε μία φορά');
+  h.cleanup();
+});
+
+test('χωρίς όνομα αρχείου από τον player: εφεδρεία το όνομα του release', async () => {
+  const h = harness();
+  await h.orchestrator.list({ type: 'movie', imdbId: 'tt55555', id: 'tt55555' });
+  await wait(80);
+  assert.ok(existsSync(join(h.outDir, 'Release.EN-Greek.srt')));
+  h.cleanup();
+});
+
+test('το ξανάνοιγμα του μενού δεν ξαναγράφει το αρχείο που έχει ήδη ανεβεί', async () => {
+  const h = harness();
+  await h.orchestrator.list(MOVIE);
+  await wait(80);
+  const path = join(h.outDir, 'Dune.2024.2160p-Greek.srt');
+  const before = statSync(path).mtime.toISOString();
+
+  await h.orchestrator.list(MOVIE);
+  await h.orchestrator.list(MOVIE);
+  assert.equal(statSync(path).mtime.toISOString(), before, 'ίδιο περιεχόμενο = καμία εγγραφή');
+  assert.equal(h.eng.calls.length, 1);
+  h.cleanup();
+});
+
+test('χωρίς ρυθμισμένο output: όλα δουλεύουν, απλώς δεν γράφεται αρχείο', async () => {
+  const h = harness({ outputDir: null });
+  const out = await h.orchestrator.list(MOVIE);
+  assert.match(out[0].id, /^prog-/);
+  await wait(80);
+  const elKey = `el-${videoKey({ imdbId: 'tt15239678' })}`;
+  assert.ok(await h.orchestrator.getSubtitle(elKey), 'ο υπότιτλος σερβίρεται κανονικά');
+  assert.equal(h.cache.meta(elKey).outputFile, undefined);
+  h.cleanup();
 });

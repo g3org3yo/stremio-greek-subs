@@ -57,6 +57,9 @@ export function loadConfig({ root = process.cwd(), env = process.env, envFile } 
   // υπολογιστή παραμένει η loopback — το 0.0.0.0 δεν είναι προσβάσιμο από browser.
   const browserHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
   const cacheDir = isAbsolute(v.CACHE_DIR ?? '') ? v.CACHE_DIR : resolve(root, v.CACHE_DIR ?? '.cache');
+  // Ο φάκελος με τους έτοιμους υπότιτλους για upload. Δίπλα στο έργο, ώστε ο χρήστης
+  // να τον βρίσκει με το μάτι· δεν είναι cache και δεν πρέπει να σβήνεται μαζί της.
+  const outputDir = isAbsolute(v.OUTPUT_DIR ?? '') ? v.OUTPUT_DIR : resolve(root, v.OUTPUT_DIR ?? 'output');
 
   return {
     port,
@@ -92,6 +95,7 @@ export function loadConfig({ root = process.cwd(), env = process.env, envFile } 
     batchSize: Math.max(1, num(pick(v.TRANSLATE_BATCH_SIZE, v.BATCH_SIZE), 70)),
     minMatchScore: num(pick(v.SUBDL_MIN_MATCH_SCORE, v.MIN_MATCH_SCORE), 0.8),
     cacheDir,
+    outputDir,
     glossaryPath: isAbsolute(v.GLOSSARY_FILE ?? '')
       ? v.GLOSSARY_FILE
       : resolve(root, pick(v.GLOSSARY_PATH, v.GLOSSARY_FILE) ?? 'glossary.json'),

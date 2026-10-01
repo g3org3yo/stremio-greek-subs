@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createAddonServer } from '../src/server.js';
@@ -26,6 +26,8 @@ const config = {
 
 async function withServer(fn, { english } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'srv-'));
+  const outDir = join(dir, 'output');
+  const cfg = { ...config, outputDir: outDir };
   const logFile = join(dir, 'addon.log');
   const calls = { searchArgs: [] };
   const provider = {
@@ -47,12 +49,12 @@ async function withServer(fn, { english } = {}) {
   };
   const cache = createCache(dir);
   const jobs = createJobQueue({ log: () => {} });
-  const orchestrator = createOrchestrator({ config, providers: [provider], engines: [engine], cache, jobs, log: () => {} });
-  const server = createAddonServer({ config, orchestrator, cache, jobs, logFile, log: () => {} });
+  const orchestrator = createOrchestrator({ config: cfg, providers: [provider], engines: [engine], cache, jobs, log: () => {} });
+  const server = createAddonServer({ config: cfg, orchestrator, cache, jobs, logFile, log: () => {} });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   try {
-    await fn({ base, cache, jobs, calls, logFile, dir });
+    await fn({ base, cache, jobs, calls, logFile, dir, outDir });
   } finally {
     await new Promise((r) => server.close(r));
     rmSync(dir, { recursive: true, force: true });
@@ -267,5 +269,55 @@ test('/: σελίδα με οδηγίες εγκατάστασης', async () =>
 test('/: άγνωστη διαδρομή -> 404', async () => {
   await withServer(async ({ base }) => {
     assert.equal((await get(base, '/κάτι-άλλο')).status, 404);
+  });
+});
+
+// --- Φάκελος output: λήψη των έτοιμων αρχείων ---
+
+const YTS_FILE = 'Teenage.Sex.And.Death.At.Camp.Miasma.2026.1080p.WEBRip.x264.AAC-[YTS.GG - YTS.BZ].mp4';
+const YTS_SUB = 'Teenage.Sex.And.Death.At.Camp.Miasma.2026.1080p.WEBRip.x264.AAC-[YTS.GG - YTS.BZ]-Greek.srt';
+
+test('output/: το αρχείο βγαίνει με το όνομα του βίντεο, κατεβαίνει και φαίνεται στη σελίδα', async () => {
+  await withServer(async ({ base, outDir }) => {
+    await get(base, `/subtitles/movie/tt15239678/filename=${encodeURIComponent(YTS_FILE)}.json`);
+    await wait(80);
+    assert.ok(existsSync(join(outDir, YTS_SUB)), 'το αρχείο βγήκε στον φάκελο output');
+
+    const res = await get(base, `/output/${encodeURIComponent(YTS_SUB)}`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-disposition'), /^attachment/);
+    assert.ok(res.headers.get('content-disposition').includes('filename*='), 'το όνομα ταξιδεύει URL-encoded');
+    assert.match(await res.text(), /Γεια/);
+
+    const html = await (await get(base, '/')).text();
+    assert.ok(html.includes(YTS_SUB), 'η σελίδα δείχνει το έτοιμο αρχείο');
+    const admin = await (await get(base, '/admin')).json();
+    assert.deepEqual(
+      admin.output.map((f) => f.name),
+      [YTS_SUB],
+    );
+  });
+});
+
+test('output/: άγνωστο όνομα -> 404, χωρίς διαρροή έξω από τον φάκελο', async () => {
+  await withServer(async ({ base, dir }) => {
+    writeFileSync(join(dir, '..', 'outside-output.srt'), 'ΜΥΣΤΙΚΟ-OUTPUT', 'utf8');
+    assert.equal((await get(base, '/output/λείπει-Greek.srt')).status, 404);
+
+    const attacks = [
+      '/output/../outside-output.srt',
+      '/output/..%2F..%2Foutside-output.srt',
+      '/output/%2e%2e%2f%2e%2e%2foutside-output.srt',
+      '/output/..%5C..%5Coutside-output.srt',
+      '/output/C:\\Windows\\win.ini',
+      '/output/',
+      '/output/%00',
+    ];
+    for (const attack of attacks) {
+      const res = await rawGet(base, attack);
+      assert.notEqual(res.status, 200, `δεν πρέπει να σερβιριστεί: ${attack}`);
+      assert.equal(res.body.includes('ΜΥΣΤΙΚΟ-OUTPUT'), false, `διαρροή μέσω: ${attack}`);
+    }
+    rmSync(join(dir, '..', 'outside-output.srt'), { force: true });
   });
 });

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { cacheKey, safeKey } from './cache.js';
+import { findOutput, outputName, writeOutput } from './output.js';
 import { makeBatches, applyTranslations } from './subtitle/batch.js';
 import { decodeSubtitle } from './subtitle/encoding.js';
 import { parseSrt } from './subtitle/parse.js';
@@ -51,6 +52,50 @@ export function createOrchestrator({
   const sourceLangs = config.sourceLangs ?? ['en'];
   const batchSize = config.batchSize ?? 70;
   const chain = createChain({ engines, targetLangName, glossary, log });
+
+  const outputDir = config.outputDir ?? null;
+  // Το όνομα του αρχείου βίντεο έρχεται με το αίτημα του Stremio και το κρατάμε ανά
+  // έργο: η μετάφραση τρέχει στο background, οπότε όταν τελειώσει πρέπει να ξέρει
+  // πώς να ονομάσει το αρχείο που θα ανεβάσει ο χρήστης.
+  const videoNames = new Map();
+
+  function rememberVideo(vk, { filename, imdbId, season, episode } = {}) {
+    const current = videoNames.get(vk) ?? {};
+    videoNames.set(vk, {
+      ...current,
+      imdbId: imdbId ?? current.imdbId,
+      season: season ?? current.season,
+      episode: episode ?? current.episode,
+      // Νεότερο όνομα υπερισχύει: ο χρήστης μπορεί να ξανακατέβασε την ταινία με άλλο
+      // release, και τότε το σωστό όνομα για upload είναι το καινούργιο.
+      videoFileName: filename ?? current.videoFileName,
+    });
+  }
+
+  // Αντίγραφο για upload στον φάκελο output/, με όνομα που ταιριάζει στο αρχείο του
+  // χρήστη (βλ. output.js). Δεν είναι cache: είναι το τελικό αρχείο που ανεβάζει ο
+  // ίδιος. Το ίδιο περιεχόμενο δεν ξαναγράφεται, ώστε τα ήδη ανεβασμένα να μην
+  // αλλάζουν ημερομηνία κάθε φορά που ανοίγει το μενού υποτίτλων.
+  function publishOutput(vk, key, text) {
+    if (!outputDir || !text) return null;
+    const meta = cache.meta(key) ?? {};
+    const known = videoNames.get(vk) ?? {};
+    const videoFileName = known.videoFileName ?? meta.videoFileName ?? null;
+    const name = outputName({
+      videoFileName,
+      releaseName: meta.releaseName,
+      imdbId: meta.imdbId ?? known.imdbId,
+      season: meta.season ?? known.season,
+      episode: meta.episode ?? known.episode,
+    });
+    if (meta.outputFile === name && findOutput(outputDir, name)) return name;
+
+    const written = writeOutput(outputDir, name, text);
+    if (!written) return null;
+    cache.updateMeta(key, { outputFile: name, videoFileName });
+    if (written.written) log(`[orchestrator] έτοιμο για upload: output/${name}`);
+    return name;
+  }
 
   // Ο πρώτος provider που δίνει αποτελέσματα κερδίζει· μια αποτυχία δεν σταματά
   // την αναζήτηση, γιατί ο επόμενος μπορεί να έχει το ίδιο έργο.
@@ -114,6 +159,7 @@ export function createOrchestrator({
     if (existing) {
       log(`[orchestrator] βρέθηκε έτοιμη μετάφραση για την πηγή (${trKey})`);
       cache.put(elKey, existing, { ...meta, kind: 'ai-translation', sourceKey: trKey });
+      publishOutput(vk, elKey, existing);
       return entryFor(elKey, { kind: 'ai-translation' });
     }
 
@@ -148,6 +194,9 @@ export function createOrchestrator({
       cache.put(trKey, out, record);
       cache.put(elKey, out, record);
       log(`[orchestrator] μεταφράστηκαν ${byId.size}/${cues.length} cues`);
+      // Μόλις η μετάφραση είναι έτοιμη, το αρχείο για upload υπάρχει — ο χρήστης δεν
+      // χρειάζεται να ξανανοίξει το μενού του Stremio για να το βρει.
+      publishOutput(vk, elKey, out);
       return { translated: byId.size, total: cues.length };
     });
 
@@ -160,10 +209,16 @@ export function createOrchestrator({
       const vk = videoKey({ imdbId, season, episode });
       const elKey = safeKey('el', vk);
       const enKey = safeKey('en', vk);
+      rememberVideo(vk, { filename, imdbId, season, episode });
 
       // 1. Έτοιμος ελληνικός υπότιτλος (πραγματικός ή μεταφρασμένος): ακαριαία.
       const ready = cache.getSrt(elKey);
-      if (ready) return [entryFor(elKey, cache.meta(elKey))];
+      if (ready) {
+        // Ίδιος υπότιτλος, άλλο αρχείο βίντεο: το αντίγραφο για upload παίρνει το νέο
+        // όνομα (χρήσιμο όταν κατέβηκε άλλο release της ίδιας ταινίας).
+        publishOutput(vk, elKey, ready);
+        return [entryFor(elKey, cache.meta(elKey))];
+      }
 
       const context = { type, season, episode, imdbId };
       // 2. Έχουμε ήδη την αγγλική πηγή. ΔΕΝ ξαναχτυπάμε τον provider ούτε
@@ -188,8 +243,10 @@ export function createOrchestrator({
           season,
           episode,
           imdbId,
+          videoFileName: filename,
         });
         log(`[orchestrator] πραγματικοί ελληνικοί από ${candidate.provider}: ${candidate.releaseName}`);
+        publishOutput(vk, elKey, text);
         return [entryFor(elKey, { kind: 'provider', releaseName: candidate.releaseName })];
       }
 
@@ -209,6 +266,7 @@ export function createOrchestrator({
         season,
         episode,
         imdbId,
+        videoFileName: filename,
       };
       return [await translateOrAdopt({ vk, elKey, enKey, text, meta, context })];
     } catch (err) {

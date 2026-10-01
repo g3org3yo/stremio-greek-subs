@@ -1,6 +1,7 @@
 import { createServer as createHttpServer } from 'node:http';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isSafeKey } from './cache.js';
+import { listOutput, readOutput } from './output.js';
 
 const MANIFEST = {
   id: 'org.local.greek-subs-auto',
@@ -26,13 +27,27 @@ function json(res, status, payload, extraHeaders = {}) {
   res.end(body);
 }
 
+// Το Content-Disposition δεν δέχεται μη-ASCII (το Node πετάει σφάλμα) και ένα
+// εισαγωγικό μένει ανοιχτό αν το όνομα περιέχει απόστροφο. Γι' αυτό: ασφαλές ASCII
+// όνομα για όποιον δεν καταλαβαίνει το δεύτερο, και το σωστό όνομα URL-encoded.
+function contentDisposition(filename, disposition) {
+  const ascii = String(filename)
+    .replace(/[^\x20-\x7e]/g, '_')
+    .replace(/["\\]/g, '_');
+  const encoded = encodeURIComponent(String(filename)).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `${disposition}; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
 function sendSubtitle(res, text, { pending = false, name = 'subtitle' } = {}) {
   // Το filenames των Stremio players ταιριάζει σε .srt: δίνουμε και όνομα και
   // σωστό τύπο, αλλιώς κάποιοι players αρνούνται να το φορτώσουν.
   res.writeHead(200, {
     'content-type': 'application/x-subrip; charset=utf-8',
     'content-length': Buffer.byteLength(text),
-    'content-disposition': `inline; filename="${name}.srt"`,
+    'content-disposition': contentDisposition(`${name}.srt`, 'inline'),
     'access-control-allow-origin': '*',
     // Έτοιμος υπότιτλος δεν αλλάζει ποτέ -> μένει στον player. Ο δείκτης προόδου
     // αλλάζει σε υπότιτλο, οπότε δεν επιτρέπεται να μείνει στην cache.
@@ -66,7 +81,14 @@ function tailLog(file, lines = 30) {
   }
 }
 
-function page(config, orchestrator, jobs, cache, logFile, origin) {
+function esc(value) {
+  return String(value ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c],
+  );
+}
+
+function page(config, orchestrator, jobs, cache, logFile, origin, outputFiles = []) {
   const status = orchestrator.status();
   const entries = cache.list().slice(0, 20);
   const pendingJobs = status.jobs.filter((j) => j.state === 'queued' || j.state === 'running');
@@ -80,6 +102,18 @@ function page(config, orchestrator, jobs, cache, logFile, origin) {
         (e.bytes ?? 0) / 1024,
       )} KB</td></tr>`;
     })
+    .join('');
+
+  // Ο φάκελος output/ υπάρχει για έναν λόγο: να ανεβάσει ο χρήστης τα αρχεία σε
+  // όποιο site θέλει. Γι' αυτό η λίστα έχει κατέβασμα με ένα κλικ, με το σωστό όνομα.
+  const outputRows = outputFiles
+    .slice(0, 25)
+    .map(
+      (f) =>
+        `<tr><td><a href="/output/${encodeURIComponent(f.name)}">${esc(f.name)}</a></td><td>${Math.round(
+          (f.bytes ?? 0) / 1024,
+        )} KB</td><td>${esc(String(f.modified ?? '').slice(0, 16).replace('T', ' '))}</td></tr>`,
+    )
     .join('');
 
   const logLines = tailLog(logFile, 25).map((l) => `<div class="log">${l.replace(/[<>&]/g, '')}</div>`).join('');
@@ -105,9 +139,15 @@ function page(config, orchestrator, jobs, cache, logFile, origin) {
   <p><b>Σε εξέλιξη:</b> ${pendingJobs.length}${pendingJobs.length ? ` (${pendingJobs.map((j) => j.key).join(', ')})` : ''}
      · <b>Αποτυχίες:</b> ${failed.length}${failed.length ? ` (${failed.map((j) => j.message).join(' | ')})` : ''}</p>
   <p><b>Μηχανές εκτός ορίου:</b> ${quota.exhausted.join(', ') || 'καμία'} · <b>Cache:</b> ${cache.stats().count} αρχεία</p>
+  <p><b>Έτοιμα για upload:</b> ${outputFiles.length} αρχεία στο <code>${esc(config.outputDir)}</code></p>
 </div>
 <h2>Πρόσφατοι υπότιτλοι</h2>
 <table><tr><th>Κλειδί</th><th>Είδος</th><th>Πηγή</th><th>Μέγεθος</th></tr>${rows || '<tr><td colspan="4">τίποτα ακόμα</td></tr>'}</table>
+<h2>Έτοιμοι για upload <code>output/</code></h2>
+<p>Όνομα ίδιο με το αρχείο του βίντεο + <code>-Greek</code>. Πάτησε ένα για κατέβασμα, μετά ανέβασέ το όπου θέλεις.</p>
+<table><tr><th>Αρχείο</th><th>Μέγεθος</th><th>Πότε</th></tr>${
+    outputRows || '<tr><td colspan="3">τίποτα ακόμα — παίξε κάτι στο Stremio και άνοιξε το μενού υποτίτλων</td></tr>'
+  }</table>
 <h2>Τελευταίες γραμμές log</h2>
 ${logLines || '<div class="log">—</div>'}
 </html>`;
@@ -141,15 +181,25 @@ export function createAddonServer({ config, orchestrator, cache, jobs, logFile, 
           subdlKeyPresent: Boolean(config.subdlApiKey),
           geminiKeyPresent: Boolean(config.geminiApiKey),
           lmstudio: config.lmstudioBaseUrl,
+          outputDir: config.outputDir,
         },
         ...orchestrator.status(),
         recent: cache.list().slice(0, 20),
+        output: listOutput(config.outputDir, { limit: 50 }),
         logTail: tailLog(logFile, 40),
       });
     }
 
     if (url.pathname === '/') {
-      const html = page(config, orchestrator, jobs, cache, logFile, originFor(req, config));
+      const html = page(
+        config,
+        orchestrator,
+        jobs,
+        cache,
+        logFile,
+        originFor(req, config),
+        listOutput(config.outputDir, { limit: 50 }),
+      );
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': Buffer.byteLength(html) });
       return res.end(html);
     }
@@ -186,10 +236,27 @@ export function createAddonServer({ config, orchestrator, cache, jobs, logFile, 
       }
       const text = await orchestrator.getSubtitle(key);
       if (text == null) return json(res, 404, { error: 'άγνωστο αρχείο' });
+      const meta = cache.meta(key) ?? {};
       return sendSubtitle(res, text, {
         pending: orchestrator.isPending(key),
-        name: cache.meta(key)?.releaseName ? 'greek' : 'subtitle',
+        // Το όνομα που θα σώσει ο player είναι ό,τι ακριβώς θα ανεβάσει ο χρήστης:
+        // έτσι δεν χρειάζεται μετονομασία ούτε για τον ίδιο ούτε για όποιον το πάρει.
+        name: meta.outputFile ? meta.outputFile.replace(/\.srt$/i, '') : meta.releaseName ? 'greek' : 'subtitle',
       });
+    }
+
+    // Κατέβασμα των έτοιμων αρχείων για upload. Το όνομα από το URL δεν χτίζει
+    // ποτέ διαδρομή: ψάχνεται κυριολεκτικά στη λίστα του φακέλου output/ (βλ. output.js).
+    if (url.pathname.startsWith('/output/')) {
+      const name = decodeURIComponent(url.pathname.slice('/output/'.length));
+      const file = readOutput(config.outputDir, name);
+      if (!file) return json(res, 404, { error: 'άγνωστο αρχείο' });
+      res.writeHead(200, {
+        'content-type': 'application/x-subrip; charset=utf-8',
+        'content-length': file.buffer.length,
+        'content-disposition': contentDisposition(file.name, 'attachment'),
+      });
+      return res.end(file.buffer);
     }
 
     return json(res, 404, { error: 'άγνωστη διαδρομή' });
