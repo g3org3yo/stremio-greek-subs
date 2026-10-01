@@ -9,3 +9,4 @@ logs/
 .superpowers/
 npm-debug.log*
 dist/
+docs/superpowers/

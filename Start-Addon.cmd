@@ -7,7 +7,8 @@ rem --- Βρες το Node.js: πρώτα το φορητό που ταξιδε�
 set "NODE="
 if exist "%~dp0node\node.exe" set "NODE=%~dp0node\node.exe"
 if not defined NODE where node >nul 2>nul && set "NODE=node"
-if not defined NODE if exist "D:\Hermes Agent\Tools\node\node.exe" set "NODE=D:\Hermes Agent\Tools\node\node.exe"
+if not defined NODE if exist "%ProgramFiles%\nodejs\node.exe" set "NODE=%ProgramFiles%\nodejs\node.exe"
+if not defined NODE if exist "%LOCALAPPDATA%\Programs\nodejs\node.exe" set "NODE=%LOCALAPPDATA%\Programs\nodejs\node.exe"
 if not defined NODE (
   echo.
   echo  Δεν βρήκα το Node.js.

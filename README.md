@@ -4,6 +4,13 @@
 ελληνικός, μεταφράζει τον αγγλικό αυτόματα στα ελληνικά. Τρέχει μόνο στον υπολογιστή
 σου (`127.0.0.1`) — τίποτα δεν εκτίθεται στο δίκτυο.
 
+> **In English:** a local Stremio addon that gives you **Greek subtitles** for whatever
+> you watch — real ones from SubDL when they exist, otherwise it auto-translates the
+> English subtitle (free Gemini tier, or a local model as backup). What it produces are
+> **standard `.srt` files**, saved with the video's own name plus `-Greek`, ready to
+> upload to any subtitle site. Runs on Windows, entirely on your own PC — no server, no
+> account, nothing exposed to the internet.
+
 ## Τι κάνει, με τη σειρά
 
 1. **Ψάχνει πραγματικούς ελληνικούς** (SubDL). Αν βρει, τους σερβίρει όπως είναι —
@@ -15,7 +22,14 @@
 4. Ό,τι δεν μεταφραστεί (σπάνια, π.χ. μπλοκάρισμα «ασφάλειας») **μένει στα αγγλικά**
    αντί να χαθεί όλη η δουλειά.
 
-## Εγκατάσταση
+## Λήψη — χωρίς εγκατάσταση (Windows)
+
+Κατέβασε το `Stremio-Greek-Subs-portable.zip` από τα
+[Releases](https://github.com/g3org3yo/stremio-greek-subs/releases/latest). Περιέχει και
+το ίδιο το Node, οπότε το μόνο που κάνεις είναι: αποσυμπίεση → `Start-Addon.cmd` → τα δύο
+δωρεάν κλειδιά σου. Οι αναλυτικές οδηγίες είναι το `ODIGIES.txt` μέσα στο zip.
+
+## Εγκατάσταση από τον κώδικα
 
 Χρειάζεται **Node 22+** (`node -v`).
 
@@ -109,8 +123,8 @@ http://127.0.0.1:7000/
 output/Teenage.Sex.And.Death.At.Camp.Miasma.2026.1080p.WEBRip.x264.AAC-[YTS.GG - YTS.BZ]-Greek.srt
 ```
 
-Ο φάκελος είναι `D:\Hermes Agent\Projects\stremio-greek-subs\output` (αλλάζει με το
-`OUTPUT_DIR` στο `.env`). Δίπλα στο όνομα του βίντεο μπαίνει μόνο το `-Greek` — ό,τι
+Ο φάκελος είναι `output\` μέσα στον φάκελο του addon (αλλάζει με το `OUTPUT_DIR` στο
+`.env`). Δίπλα στο όνομα του βίντεο μπαίνει μόνο το `-Greek` — ό,τι
 ζητάνε τα sites υποτίτλων — και τίποτα άλλο δεν πειράζεται: τελείες, αγκύλες, όνομα
 ομάδας μένουν όπως τα κατέβασες.
 
@@ -143,3 +157,9 @@ node scripts/probe-http.mjs   # έλεγχος του ζωντανού addon
 
 Κινητό/tablet στο ίδιο WiFi. Το Stremio δέχεται addon μόνο από `localhost` ή HTTPS,
 άρα χρειάζεται `BIND_HOST=0.0.0.0` + διεύθυνση ή tunnel.
+
+## Άδεια
+
+MIT — κάνε ό,τι θέλεις με τον κώδικα. Οι υπότιτλοι που βρίσκονται έτοιμοι ανήκουν σε
+όποιον τους έφτιαξε· η αυτόματη μετάφραση που παράγει το addon είναι ελεύθερη να τη
+μοιραστείς όπου θέλεις.
